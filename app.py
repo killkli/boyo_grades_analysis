@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib
 import platform
 import matplotlib.font_manager as fm
+from sklearn.linear_model import LinearRegression
 
 def get_available_font(font_list):
     available = set(f.name for f in fm.fontManager.ttflist)
@@ -118,7 +119,7 @@ if uploaded_file:
             df = df[df[col].isin(selected)]
 
     # ===== 分頁式分析（Tabs）與首頁 Dashboard =====
-    tab_names = ["Dashboard", "分數分布分析", "通過率分析", "成績分布與趨勢", "進階檢測與晉級分析", "檢測參與度", "時間序列分析", "個案追蹤", "交叉分析", "成績分群分析", "自動分群檢測分布分析"]
+    tab_names = ["Dashboard", "分數分布分析", "通過率分析", "成績分布與趨勢", "進階檢測與晉級分析", "檢測參與度", "時間序列分析", "個案追蹤", "交叉分析", "成績分群分析", "自動分群檢測分布分析", "相關性分析", "預測分析"]
     tabs = st.tabs(tab_names)
 
     # Dashboard
@@ -159,21 +160,12 @@ if uploaded_file:
             st.warning("本工作表無 '成績' 欄位")
 
     # 其餘分析分頁
-    analysis_map = {
-        2: "通過率分析",
-        3: "成績分布與趨勢",
-        4: "進階檢測與晉級分析",
-        5: "檢測參與度",
-        6: "時間序列分析",
-        7: "個案追蹤",
-        8: "交叉分析",
-        9: "成績分群分析",
-        10: "自動分群檢測分布分析"
-    }
-    for idx in range(2, len(tab_names)):
+    for idx, tab_name in enumerate(tab_names):
+        # 跳過 Dashboard、分數分布分析、相關性分析、預測分析（這些已在上方 with 處理）
+        if tab_name in ["Dashboard", "分數分布分析", "相關性分析", "預測分析"]:
+            continue
         with tabs[idx]:
-            analysis_type = analysis_map[idx]
-            if analysis_type == "通過率分析":
+            if tab_name == "通過率分析":
                 st.subheader("通過率分析")
                 if '是否通過？' in df.columns:
                     pass_rate = df['是否通過？'].value_counts(normalize=True) * 100
@@ -183,7 +175,7 @@ if uploaded_file:
                     st.pyplot(fig)
                 else:
                     st.warning("本工作表無 '是否通過？' 欄位")
-            elif analysis_type == "成績分布與趨勢":
+            elif tab_name == "成績分布與趨勢":
                 st.subheader("成績分布與趨勢")
                 if '成績' in df.columns:
                     st.write(df['成績'].describe())
@@ -192,19 +184,19 @@ if uploaded_file:
                     st.pyplot(fig)
                 else:
                     st.warning("本工作表無 '成績' 欄位")
-            elif analysis_type == "進階檢測與晉級分析":
+            elif tab_name == "進階檢測與晉級分析":
                 st.subheader("進階檢測與晉級分析")
                 if '是否計算為進階檢測？' in df.columns:
                     st.write(df['是否計算為進階檢測？'].value_counts())
                 else:
                     st.warning("本工作表無 '是否計算為進階檢測？' 欄位")
-            elif analysis_type == "檢測參與度":
+            elif tab_name == "檢測參與度":
                 st.subheader("檢測參與度")
                 if '姓名' in df.columns:
                     st.write(df['姓名'].value_counts())
                 else:
                     st.warning("本工作表無 '姓名' 欄位")
-            elif analysis_type == "時間序列分析":
+            elif tab_name == "時間序列分析":
                 st.subheader("時間序列分析（多檢測/分組趨勢）")
                 st.markdown("""
                 - 可觀察多次檢測、不同分組（如年級/學校）成績變化趨勢
@@ -212,20 +204,16 @@ if uploaded_file:
                 """)
                 if '日期' in df.columns and '成績' in df.columns:
                     df['日期'] = pd.to_datetime(df['日期'], errors='coerce')
-                    # 檢測名稱選擇
                     test_options = df['檢測名稱'].dropna().unique().tolist() if '檢測名稱' in df.columns else []
                     selected_tests = st.multiselect('選擇檢測名稱（可複選）', test_options, default=test_options)
-                    # 分組欄位選擇
                     group_cols = [col for col in ['年級(匯出設定期末)','學校'] if col in df.columns]
                     group_col = st.selectbox('分組欄位（可選）', ['無']+group_cols)
-                    # 指標選擇
                     metric = st.selectbox('趨勢指標', ['平均分數','標準差','及格率'])
                     plot_df = df[df['檢測名稱'].isin(selected_tests)] if selected_tests else df
                     if group_col != '無':
                         groupby_cols = ['日期', group_col]
                     else:
                         groupby_cols = ['日期']
-                    agg_dict = {'平均分數':('成績','mean'), '標準差':('成績','std'), '及格率':(lambda x: (x>=60).mean()*100)}
                     if metric == '及格率':
                         plot = plot_df.groupby(groupby_cols)['成績'].apply(lambda x: (x>=60).mean()*100).reset_index(name='及格率')
                     else:
@@ -255,7 +243,7 @@ if uploaded_file:
                     st.info('指標說明：\n平均分數=該日/群組平均，標準差=分數離散程度，及格率=60分以上比例')
                 else:
                     st.warning("本工作表無 '日期' 或 '成績' 欄位")
-            elif analysis_type == "個案追蹤":
+            elif tab_name == "個案追蹤":
                 st.subheader("個案追蹤")
                 if '姓名' in df.columns and '成績' in df.columns:
                     student = st.selectbox("選擇學生", df['姓名'].unique())
@@ -266,7 +254,7 @@ if uploaded_file:
                         st.line_chart(student_df.sort_values('日期').set_index('日期')['成績'])
                 else:
                     st.warning("本工作表無 '姓名' 或 '成績' 欄位")
-            elif analysis_type == "交叉分析":
+            elif tab_name == "交叉分析":
                 st.subheader("交叉分析")
                 if '是否通過？' in df.columns and '學生考核類別' in df.columns:
                     cross = pd.crosstab(df['學生考核類別'], df['是否通過？'])
@@ -274,14 +262,13 @@ if uploaded_file:
                     st.bar_chart(cross)
                 else:
                     st.warning("本工作表無 '是否通過？' 或 '學生考核類別' 欄位")
-            elif analysis_type == "成績分群分析":
+            elif tab_name == "成績分群分析":
                 st.subheader("成績分群分析（KMeans）")
                 st.markdown("""
                 - 依據成績自動分群，觀察不同分群的分布特性
                 - 可用於辨識高分/中分/低分群學生
                 """)
                 if '成績' in df.columns:
-                    # Elbow法則建議分群數
                     valid_scores = df['成績'].dropna().values.reshape(-1, 1)
                     sse = []
                     K_range = range(2, min(9, len(valid_scores)))
@@ -302,17 +289,13 @@ if uploaded_file:
                         clusters = kmeans.fit_predict(valid_scores)
                         df_clustered = df.copy()
                         df_clustered.loc[df['成績'].notna(), '分群'] = clusters
-                        # 分群摘要
                         summary = df_clustered.groupby('分群')['成績'].agg(['count','mean','std',lambda x: (x>=60).mean()*100])
                         summary = summary.rename(columns={'<lambda_0>':'及格率(%)'})
                         st.write('分群摘要統計：')
                         st.dataframe(summary)
-                        # 分群結果表
                         st.write(df_clustered[['姓名', '成績', '分群']].sort_values('分群'))
-                        # 下載分群結果
                         csv = df_clustered[['姓名','成績','分群']].to_csv(index=False).encode('utf-8-sig')
                         st.download_button('下載分群結果CSV', csv, file_name='分群結果.csv', mime='text/csv')
-                        # 分群分布圖
                         fig, ax = plt.subplots()
                         sns.histplot(data=df_clustered, x='成績', hue='分群', multiple='stack', palette='tab10', ax=ax)
                         st.pyplot(fig)
@@ -321,16 +304,14 @@ if uploaded_file:
                         st.warning("有效成績數量不足以分成所選群數")
                 else:
                     st.warning("本工作表無 '成績' 欄位")
-            elif analysis_type == "自動分群檢測分布分析":
+            elif tab_name == "自動分群檢測分布分析":
                 st.subheader("自動分群檢測分布分析")
                 st.markdown("""
                 - 依據檢測成績特徵（平均、標準差、樣本數）自動分群
                 - 可觀察同類型檢測的分數分布差異
                 """)
                 if '檢測名稱' in df.columns and '成績' in df.columns:
-                    # 先計算每個檢測名稱的分數分布特徵
                     test_features = df.groupby('檢測名稱')['成績'].agg(['mean', 'std', 'count']).fillna(0)
-                    # Elbow法則建議分群數
                     sse = []
                     K_range = range(2, min(9, len(test_features)))
                     for k in K_range:
@@ -349,19 +330,15 @@ if uploaded_file:
                         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
                         clusters = kmeans.fit_predict(test_features[['mean', 'std', 'count']])
                         test_features['分群'] = clusters
-                        # 讓使用者選擇分群
                         selected_cluster = st.selectbox("選擇檢測分群", sorted(test_features['分群'].unique()))
                         selected_tests = test_features[test_features['分群'] == selected_cluster].index.tolist()
                         st.write(f"此分群包含檢測：{selected_tests}")
-                        # 分群摘要
                         summary = test_features.groupby('分群').agg({'mean':'mean','std':'mean','count':'sum'})
                         summary = summary.rename(columns={'mean':'平均分數','std':'標準差','count':'檢測數'})
                         st.write('分群摘要統計：')
                         st.dataframe(summary)
-                        # 分群結果下載
                         csv = test_features.reset_index()[['檢測名稱','mean','std','count','分群']].to_csv(index=False).encode('utf-8-sig')
                         st.download_button('下載分群檢測結果CSV', csv, file_name='檢測分群結果.csv', mime='text/csv')
-                        # 顯示這群所有檢測的分數分布
                         filtered = df[df['檢測名稱'].isin(selected_tests)]
                         st.write(filtered[['檢測名稱', '成績']].groupby('檢測名稱').describe())
                         fig, ax = plt.subplots(figsize=(8,4))
@@ -373,5 +350,68 @@ if uploaded_file:
                         st.warning("檢測數量不足以分群")
                 else:
                     st.warning("本工作表無 '檢測名稱' 或 '成績' 欄位")
+
+    # 相關性分析
+    with tabs[-2]:
+        st.header("相關性分析")
+        # 依據資料欄位決定可分析單位
+        options = []
+        if '檢測名稱' in df.columns:
+            options.append('檢測名稱')
+        if '科目' in df.columns:
+            options.append('科目')
+        if not options:
+            st.warning("本工作表無可用於相關性分析的欄位（需有 '檢測名稱' 或 '科目'）")
+        else:
+            unit = st.selectbox('選擇分析單位', options)
+            # 轉成 wide 格式
+            if unit == '檢測名稱':
+                pivot = df.pivot_table(index='姓名', columns='檢測名稱', values='成績')
+            else:
+                pivot = df.pivot_table(index='姓名', columns='科目', values='成績')
+            corr = pivot.corr(method='pearson')
+            st.write('#### 相關係數矩陣')
+            st.dataframe(corr.round(2))
+            st.write('#### 相關係數熱力圖')
+            fig, ax = plt.subplots(figsize=(8,6))
+            sns.heatmap(corr, annot=True, cmap='coolwarm', vmin=-1, vmax=1, ax=ax)
+            st.pyplot(fig)
+            st.info("指標說明：\n- 皮爾森相關係數介於-1到1，越接近1表示正相關，越接近-1表示負相關，0表示無線性相關。\n\n解讀建議：\n- 相關係數高的檢測/科目，學生表現有高度一致性，可能有共同學習基礎。\n- 相關係數低或負相關，代表表現差異大，建議進一步分析原因。\n- 熱力圖可快速辨識高低相關的檢測/科目組合。")
+
+    # 預測分析
+    with tabs[-1]:
+        st.header("預測分析（學習風險預警/未來表現預測）")
+        if '姓名' in df.columns and '成績' in df.columns and '日期' in df.columns:
+            df['日期'] = pd.to_datetime(df['日期'], errors='coerce')
+            pred_results = []
+            for name, group in df.sort_values('日期').groupby('姓名'):
+                if group['成績'].notna().sum() >= 3:
+                    group = group.dropna(subset=['成績', '日期'])
+                    group = group.sort_values('日期')
+                    X = np.arange(len(group)).reshape(-1,1)
+                    y = group['成績'].values
+                    model = LinearRegression()
+                    model.fit(X, y)
+                    next_idx = np.array([[len(group)]])
+                    pred_score = model.predict(next_idx)[0]
+                    pred_results.append({'姓名': name, '預測分數': pred_score, '最近分數': y[-1]})
+            if pred_results:
+                pred_df = pd.DataFrame(pred_results)
+                pred_df['風險預警'] = np.where(pred_df['預測分數'] < 60, '高風險', '正常')
+                st.write('#### 學生未來分數預測')
+                st.dataframe(pred_df.round(2))
+                st.write('#### 高風險學生名單（預測分數<60）')
+                st.dataframe(pred_df[pred_df['風險預警']=='高風險'][['姓名','預測分數','最近分數']].round(2))
+                st.write('#### 預測分數分布圖')
+                fig, ax = plt.subplots()
+                sns.histplot(pred_df['預測分數'], bins=20, kde=True, ax=ax)
+                ax.axvline(60, color='red', linestyle='--', label='及格線')
+                ax.legend()
+                st.pyplot(fig)
+                st.info("指標說明：\n- 利用學生歷史成績進行線性回歸預測下次分數。\n- 預測分數<60者標記為高風險。\n\n解讀建議：\n- 高風險學生建議加強輔導。\n- 若預測分數普遍偏低，需檢視教學內容或考題難度。\n- 線性回歸僅為簡易預測，實際表現仍受多重因素影響。")
+            else:
+                st.info('無足夠多次成績紀錄的學生可進行預測（需至少3次成績）')
+        else:
+            st.warning("本工作表需有 '姓名'、'成績'、'日期' 欄位")
 else:
     st.info("請先上傳Excel檔案") 
