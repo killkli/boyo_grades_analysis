@@ -28,7 +28,37 @@ from modules.score_clustering import score_clustering_tab
 from modules.auto_test_clustering import auto_test_clustering_tab
 from modules.correlation import correlation_tab
 from modules.prediction import prediction_tab
+from datetime import datetime, timedelta
 
+# ===== 密碼驗證區塊 =====
+CORRECT_PASSWORD = os.environ.get('BOYO_PASS')
+COOKIE_KEY = 'boyo_login'
+
+# 檢查登入狀態
+if COOKIE_KEY not in st.session_state:
+    st.session_state[COOKIE_KEY] = False
+
+# 登入流程
+if not st.session_state[COOKIE_KEY]:
+    st.title('🔒 請輸入通關密碼')
+    password = st.text_input('密碼', type='password')
+    login_btn = st.button('登入')
+    if login_btn:
+        if password == CORRECT_PASSWORD:
+            st.session_state[COOKIE_KEY] = True
+            st.success('登入成功！')
+            st.query_params['logged_in'] = '1'
+            st.query_params['ts'] = str(int(datetime.now().timestamp()))
+            st.rerun()
+        else:
+            st.error('密碼錯誤，請再試一次。')
+    st.stop()
+else:
+    # 若已登入，檢查 query params，延長 session
+    params = dict(st.query_params)
+    if params.get('logged_in', '0') != '1':
+        st.query_params['logged_in'] = '1'
+        st.query_params['ts'] = str(int(datetime.now().timestamp()))
 
 def get_gemini_advice(context, stats=None, group=None, context_info=None):
     """
