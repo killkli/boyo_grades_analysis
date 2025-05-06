@@ -254,27 +254,74 @@ if uploaded_file:
                     st.warning("本工作表無 '是否通過？' 或 '學生考核類別' 欄位")
             elif analysis_type == "成績分群分析":
                 st.subheader("成績分群分析（KMeans）")
+                st.markdown("""
+                - 依據成績自動分群，觀察不同分群的分布特性
+                - 可用於辨識高分/中分/低分群學生
+                """)
                 if '成績' in df.columns:
-                    n_clusters = st.slider("選擇分群數量", min_value=2, max_value=8, value=3)
+                    # Elbow法則建議分群數
                     valid_scores = df['成績'].dropna().values.reshape(-1, 1)
+                    sse = []
+                    K_range = range(2, min(9, len(valid_scores)))
+                    for k in K_range:
+                        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+                        kmeans.fit(valid_scores)
+                        sse.append(kmeans.inertia_)
+                    fig_elbow, ax_elbow = plt.subplots()
+                    ax_elbow.plot(list(K_range), sse, marker='o')
+                    ax_elbow.set_xlabel('分群數量')
+                    ax_elbow.set_ylabel('SSE')
+                    ax_elbow.set_title('Elbow法則建議分群數')
+                    st.pyplot(fig_elbow)
+                    st.info('建議分群數量可參考Elbow圖拐點')
+                    n_clusters = st.slider("選擇分群數量", min_value=2, max_value=8, value=3)
                     if len(valid_scores) >= n_clusters:
                         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
                         clusters = kmeans.fit_predict(valid_scores)
                         df_clustered = df.copy()
                         df_clustered.loc[df['成績'].notna(), '分群'] = clusters
+                        # 分群摘要
+                        summary = df_clustered.groupby('分群')['成績'].agg(['count','mean','std',lambda x: (x>=60).mean()*100])
+                        summary = summary.rename(columns={'<lambda_0>':'及格率(%)'})
+                        st.write('分群摘要統計：')
+                        st.dataframe(summary)
+                        # 分群結果表
                         st.write(df_clustered[['姓名', '成績', '分群']].sort_values('分群'))
+                        # 下載分群結果
+                        csv = df_clustered[['姓名','成績','分群']].to_csv(index=False).encode('utf-8-sig')
+                        st.download_button('下載分群結果CSV', csv, file_name='分群結果.csv', mime='text/csv')
+                        # 分群分布圖
                         fig, ax = plt.subplots()
                         sns.histplot(data=df_clustered, x='成績', hue='分群', multiple='stack', palette='tab10', ax=ax)
                         st.pyplot(fig)
+                        st.info('指標說明：\n分群依據KMeans演算法，分群數量可依Elbow法則建議調整。\n分群摘要顯示各群人數、平均、標準差、及格率。\n可下載分群結果進行後續追蹤。')
                     else:
                         st.warning("有效成績數量不足以分成所選群數")
                 else:
                     st.warning("本工作表無 '成績' 欄位")
             elif analysis_type == "自動分群檢測分布分析":
                 st.subheader("自動分群檢測分布分析")
+                st.markdown("""
+                - 依據檢測成績特徵（平均、標準差、樣本數）自動分群
+                - 可觀察同類型檢測的分數分布差異
+                """)
                 if '檢測名稱' in df.columns and '成績' in df.columns:
                     # 先計算每個檢測名稱的分數分布特徵
                     test_features = df.groupby('檢測名稱')['成績'].agg(['mean', 'std', 'count']).fillna(0)
+                    # Elbow法則建議分群數
+                    sse = []
+                    K_range = range(2, min(9, len(test_features)))
+                    for k in K_range:
+                        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+                        kmeans.fit(test_features[['mean', 'std', 'count']])
+                        sse.append(kmeans.inertia_)
+                    fig_elbow, ax_elbow = plt.subplots()
+                    ax_elbow.plot(list(K_range), sse, marker='o')
+                    ax_elbow.set_xlabel('分群數量')
+                    ax_elbow.set_ylabel('SSE')
+                    ax_elbow.set_title('Elbow法則建議分群數')
+                    st.pyplot(fig_elbow)
+                    st.info('建議分群數量可參考Elbow圖拐點')
                     n_clusters = st.slider("分群數量", min_value=2, max_value=min(8, len(test_features)), value=3)
                     if len(test_features) >= n_clusters:
                         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
@@ -284,6 +331,14 @@ if uploaded_file:
                         selected_cluster = st.selectbox("選擇檢測分群", sorted(test_features['分群'].unique()))
                         selected_tests = test_features[test_features['分群'] == selected_cluster].index.tolist()
                         st.write(f"此分群包含檢測：{selected_tests}")
+                        # 分群摘要
+                        summary = test_features.groupby('分群').agg({'mean':'mean','std':'mean','count':'sum'})
+                        summary = summary.rename(columns={'mean':'平均分數','std':'標準差','count':'檢測數'})
+                        st.write('分群摘要統計：')
+                        st.dataframe(summary)
+                        # 分群結果下載
+                        csv = test_features.reset_index()[['檢測名稱','mean','std','count','分群']].to_csv(index=False).encode('utf-8-sig')
+                        st.download_button('下載分群檢測結果CSV', csv, file_name='檢測分群結果.csv', mime='text/csv')
                         # 顯示這群所有檢測的分數分布
                         filtered = df[df['檢測名稱'].isin(selected_tests)]
                         st.write(filtered[['檢測名稱', '成績']].groupby('檢測名稱').describe())
@@ -291,6 +346,7 @@ if uploaded_file:
                         sns.boxplot(data=filtered, x='檢測名稱', y='成績', ax=ax)
                         plt.xticks(rotation=45)
                         st.pyplot(fig)
+                        st.info('指標說明：\n分群依據KMeans演算法，分群數量可依Elbow法則建議調整。\n分群摘要顯示各群平均分數、標準差、檢測數。\n可下載分群結果進行後續分析。')
                     else:
                         st.warning("檢測數量不足以分群")
                 else:
