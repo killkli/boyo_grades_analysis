@@ -47,6 +47,71 @@ if uploaded_file:
     st.write(f"### 預覽：{sheet}")
     st.dataframe(df.head(20))
     
+    # ===== 新增篩選條件（優化+自動分群檢測選擇） =====
+    filter_cols = []
+    # 學校
+    if '學校' in df.columns:
+        schools = df['學校'].dropna()
+        school_counts = schools.value_counts()
+        schools_sorted = school_counts.index.tolist()
+        selected_school = st.sidebar.multiselect('篩選學校', schools_sorted, default=schools_sorted, help='可搜尋學校')
+        if st.sidebar.button('全選學校'):
+            selected_school = schools_sorted
+        if st.sidebar.button('全不選學校'):
+            selected_school = []
+        filter_cols.append(('學校', selected_school))
+    # 年級
+    if '年級(匯出設定期末)' in df.columns:
+        grades = df['年級(匯出設定期末)'].dropna()
+        grade_counts = grades.value_counts()
+        grades_sorted = grade_counts.index.tolist()
+        selected_grade = st.sidebar.multiselect('篩選年級', grades_sorted, default=grades_sorted, help='可搜尋年級')
+        if st.sidebar.button('全選年級'):
+            selected_grade = grades_sorted
+        if st.sidebar.button('全不選年級'):
+            selected_grade = []
+        filter_cols.append(('年級(匯出設定期末)', selected_grade))
+    # 檢測名稱自動分群
+    auto_cluster_tests = []
+    if '檢測名稱' in df.columns and '成績' in df.columns and len(df['檢測名稱'].unique()) > 1:
+        test_features = df.groupby('檢測名稱')['成績'].agg(['mean', 'std', 'count']).fillna(0)
+        n_clusters = st.sidebar.slider("檢測名稱分群數量", min_value=2, max_value=min(8, len(test_features)), value=3, key='cluster_slider')
+        if len(test_features) >= n_clusters:
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            clusters = kmeans.fit_predict(test_features[['mean', 'std', 'count']])
+            test_features['分群'] = clusters
+            cluster_options = sorted(test_features['分群'].unique())
+            selected_cluster = st.sidebar.selectbox("依分群選擇檢測", cluster_options, key='cluster_select')
+            auto_cluster_tests = test_features[test_features['分群'] == selected_cluster].index.tolist()
+            st.sidebar.write(f"此分群包含檢測：{auto_cluster_tests}")
+            if st.sidebar.button('套用此分群檢測到下方篩選'):
+                st.session_state['selected_test'] = auto_cluster_tests
+    # 檢測名稱
+    if '檢測名稱' in df.columns:
+        tests = df['檢測名稱'].dropna()
+        test_counts = tests.value_counts()
+        tests_sorted = test_counts.index.tolist()
+        # 支援 session_state 以便自動分群套用
+        if 'selected_test' not in st.session_state:
+            st.session_state['selected_test'] = tests_sorted
+        selected_test = st.sidebar.multiselect('篩選檢測名稱', tests_sorted, default=st.session_state['selected_test'], help='可搜尋檢測名稱', key='test_multiselect')
+        if st.sidebar.button('全選檢測名稱'):
+            selected_test = tests_sorted
+            st.session_state['selected_test'] = tests_sorted
+        if st.sidebar.button('全不選檢測名稱'):
+            selected_test = []
+            st.session_state['selected_test'] = []
+        # 若有按下套用分群，則自動更新 multiselect
+        if auto_cluster_tests and st.session_state.get('selected_test') != auto_cluster_tests:
+            selected_test = auto_cluster_tests
+            st.session_state['selected_test'] = auto_cluster_tests
+        filter_cols.append(('檢測名稱', selected_test))
+    # 依據篩選條件過濾資料
+    for col, selected in filter_cols:
+        if selected:
+            df = df[df[col].isin(selected)]
+    # ===== 篩選條件結束 =====
+
     analysis_type = st.sidebar.selectbox(
         "選擇分析類型",
         [
@@ -57,7 +122,8 @@ if uploaded_file:
             "時間序列分析",
             "個案追蹤",
             "交叉分析",
-            "成績分群分析"
+            "成績分群分析",
+            "自動分群檢測分布分析"
         ]
     )
     
@@ -136,5 +202,30 @@ if uploaded_file:
                 st.warning("有效成績數量不足以分成所選群數")
         else:
             st.warning("本工作表無 '成績' 欄位")
+    elif analysis_type == "自動分群檢測分布分析":
+        st.subheader("自動分群檢測分布分析")
+        if '檢測名稱' in df.columns and '成績' in df.columns:
+            # 先計算每個檢測名稱的分數分布特徵
+            test_features = df.groupby('檢測名稱')['成績'].agg(['mean', 'std', 'count']).fillna(0)
+            n_clusters = st.sidebar.slider("分群數量", min_value=2, max_value=min(8, len(test_features)), value=3)
+            if len(test_features) >= n_clusters:
+                kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+                clusters = kmeans.fit_predict(test_features[['mean', 'std', 'count']])
+                test_features['分群'] = clusters
+                # 讓使用者選擇分群
+                selected_cluster = st.sidebar.selectbox("選擇檢測分群", sorted(test_features['分群'].unique()))
+                selected_tests = test_features[test_features['分群'] == selected_cluster].index.tolist()
+                st.write(f"此分群包含檢測：{selected_tests}")
+                # 顯示這群所有檢測的分數分布
+                filtered = df[df['檢測名稱'].isin(selected_tests)]
+                st.write(filtered[['檢測名稱', '成績']].groupby('檢測名稱').describe())
+                fig, ax = plt.subplots(figsize=(8,4))
+                sns.boxplot(data=filtered, x='檢測名稱', y='成績', ax=ax)
+                plt.xticks(rotation=45)
+                st.pyplot(fig)
+            else:
+                st.warning("檢測數量不足以分群")
+        else:
+            st.warning("本工作表無 '檢測名稱' 或 '成績' 欄位")
 else:
     st.info("請先上傳Excel檔案") 
