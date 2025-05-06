@@ -118,7 +118,7 @@ if uploaded_file:
             df = df[df[col].isin(selected)]
 
     # ===== 分頁式分析（Tabs）與首頁 Dashboard =====
-    tab_names = ["Dashboard", "通過率分析", "成績分布與趨勢", "進階檢測與晉級分析", "檢測參與度", "時間序列分析", "個案追蹤", "交叉分析", "成績分群分析", "自動分群檢測分布分析"]
+    tab_names = ["Dashboard", "分數分布分析", "通過率分析", "成績分布與趨勢", "進階檢測與晉級分析", "檢測參與度", "時間序列分析", "個案追蹤", "交叉分析", "成績分群分析", "自動分群檢測分布分析"]
     tabs = st.tabs(tab_names)
 
     # Dashboard
@@ -136,19 +136,41 @@ if uploaded_file:
         else:
             st.info("本資料無成績欄位")
 
+    # 分數分布分析
+    with tabs[1]:
+        st.header("分數分布分析")
+        if '成績' in df.columns:
+            avg = df['成績'].mean()
+            std = df['成績'].std()
+            pass_rate = (df['成績'] >= 60).mean() * 100
+            st.metric("平均分數", f"{avg:.2f}")
+            st.metric("標準差", f"{std:.2f}")
+            st.metric("及格率", f"{pass_rate:.1f}%")
+            st.write("#### 分數分布直方圖")
+            fig1, ax1 = plt.subplots()
+            sns.histplot(df['成績'], kde=True, ax=ax1)
+            st.pyplot(fig1)
+            st.write("#### 分數分布箱型圖")
+            fig2, ax2 = plt.subplots()
+            sns.boxplot(x=df['成績'], ax=ax2)
+            st.pyplot(fig2)
+            st.info("指標說明：\n- 平均分數：所有學生分數的平均值。\n- 標準差：分數的離散程度，越大表示分數分布越分散。\n- 及格率：分數大於等於60分的學生比例。\n\n解讀建議：\n- 觀察平均分數與及格率可判斷整體學習狀況。\n- 標準差高時，代表學生間學習落差大。\n- 直方圖與箱型圖可協助辨識分數分布型態與極端值。")
+        else:
+            st.warning("本工作表無 '成績' 欄位")
+
     # 其餘分析分頁
     analysis_map = {
-        1: "通過率分析",
-        2: "成績分布與趨勢",
-        3: "進階檢測與晉級分析",
-        4: "檢測參與度",
-        5: "時間序列分析",
-        6: "個案追蹤",
-        7: "交叉分析",
-        8: "成績分群分析",
-        9: "自動分群檢測分布分析"
+        2: "通過率分析",
+        3: "成績分布與趨勢",
+        4: "進階檢測與晉級分析",
+        5: "檢測參與度",
+        6: "時間序列分析",
+        7: "個案追蹤",
+        8: "交叉分析",
+        9: "成績分群分析",
+        10: "自動分群檢測分布分析"
     }
-    for idx in range(1, len(tab_names)):
+    for idx in range(2, len(tab_names)):
         with tabs[idx]:
             analysis_type = analysis_map[idx]
             if analysis_type == "通過率分析":
