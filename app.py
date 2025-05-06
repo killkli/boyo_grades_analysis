@@ -13,6 +13,7 @@ from sklearn.linear_model import LinearRegression
 import random
 import os
 import google.generativeai as genai
+import plotly.express as px
 
 
 def get_gemini_advice(context, stats=None, group=None, context_info=None):
@@ -254,14 +255,20 @@ if uploaded_file:
             st.metric("平均分數", f"{avg:.2f}")
             st.metric("標準差", f"{std:.2f}")
             st.metric("及格率", f"{pass_rate:.1f}%")
-            st.write("#### 分數分布直方圖")
+            st.write("#### 分數分布直方圖 (靜態)")
             fig1, ax1 = plt.subplots()
             sns.histplot(df['成績'], kde=True, ax=ax1)
             st.pyplot(fig1)
-            st.write("#### 分數分布箱型圖")
+            st.write("#### 分數分布直方圖 (互動式)")
+            fig1_px = px.histogram(df, x='成績', nbins=20, title='分數分布直方圖', marginal="box", histnorm=None)
+            st.plotly_chart(fig1_px, use_container_width=True)
+            st.write("#### 分數分布箱型圖 (靜態)")
             fig2, ax2 = plt.subplots()
             sns.boxplot(x=df['成績'], ax=ax2)
             st.pyplot(fig2)
+            st.write("#### 分數分布箱型圖 (互動式)")
+            fig2_px = px.box(df, y='成績', title='分數分布箱型圖')
+            st.plotly_chart(fig2_px, use_container_width=True)
             st.info(get_gemini_advice('分數分布分析', stats={'avg': avg, 'std': std, 'pass_rate': pass_rate}, context_info=current_context_info))
         else:
             st.warning("本工作表無 '成績' 欄位")
@@ -296,9 +303,13 @@ if uploaded_file:
                     quantiles = df['成績'].quantile([0.25, 0.5, 0.75]).to_dict()
                     stats = {**desc, '分位數': quantiles}
                     st.write(df['成績'].describe())
+                    st.write("#### 成績分布直方圖 (靜態)")
                     fig, ax = plt.subplots()
                     sns.histplot(df['成績'], kde=True, ax=ax)
                     st.pyplot(fig)
+                    st.write("#### 成績分布直方圖 (互動式)")
+                    fig_px = px.histogram(df, x='成績', nbins=20, title='成績分布直方圖', marginal="box", histnorm=None)
+                    st.plotly_chart(fig_px, use_container_width=True)
                     with st.spinner('正在產生AI分析建議，請稍候...'):
                         st.info(get_gemini_advice('成績分布與趨勢', stats=stats, context_info=current_context_info))
                 else:
@@ -443,9 +454,13 @@ if uploaded_file:
                         st.write(df_clustered[['姓名', '成績', '分群']].sort_values('分群'))
                         csv = df_clustered[['姓名','成績','分群']].to_csv(index=False).encode('utf-8-sig')
                         st.download_button('下載分群結果CSV', csv, file_name='分群結果.csv', mime='text/csv')
+                        st.write("#### 分群分布直方圖 (靜態)")
                         fig, ax = plt.subplots()
                         sns.histplot(data=df_clustered, x='成績', hue='分群', multiple='stack', palette='tab10', ax=ax)
                         st.pyplot(fig)
+                        st.write("#### 分群分布直方圖 (互動式)")
+                        fig_px = px.histogram(df_clustered, x='成績', color='分群', nbins=20, barmode='overlay', title='分群分布直方圖')
+                        st.plotly_chart(fig_px, use_container_width=True)
                         # 個人化分群建議
                         group_advice = {}
                         for k, v in summary.iterrows():
